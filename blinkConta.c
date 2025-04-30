@@ -103,71 +103,63 @@ void vModoNoturnoTask()
 
 void vBuzzerTask()
 {
-    // Inicializa o buzzer
     buzzer_init(BUZZER_PIN); 
     printf("Buzzer inicializado\n");
 
+    enum corSemaforo ultimaCor = DESLIGADO;
     uint32_t ultimoToque = 0;
-    bool buzzerAtivo = false;
 
     while (true){
         uint32_t tempoAtual = to_ms_since_boot(get_absolute_time());
-        
-        if (modoNoturno) {
-            //  beep lento a cada 2s
-            if (corAtual == AMARELO) {
-                if (tempoAtual - ultimoToque >= 2000) { // Beep a cada 2 segundos
-                    tocar_frequencia(1000, 300); // Tom de 300ms
-                    ultimoToque = tempoAtual;
+
+        // Se a cor mudou, toca imediatamente
+        if (corAtual != ultimaCor) {
+            ultimaCor = corAtual;
+            ultimoToque = tempoAtual;
+
+            if (modoNoturno) {
+                if (corAtual == AMARELO) {
+                    tocar_frequencia(1000, 300); // Som imediato no modo noturno
+                }
+            } else {
+                switch (corAtual) {
+                    case VERDE:
+                        tocar_frequencia(1200, 1000); 
+                        ultimoToque = tempoAtual + 99999; 
+                        break;
+                    case AMARELO:
+                        tocar_frequencia(1000, 250); // Primeiro bipe
+                        break;
+                    case VERMELHO:
+                        tocar_frequencia(800, 500); 
+                        break;
+                    default:
+                        break;
                 }
             }
-        }  else {
-            // Modo normal - depende da cor atual
+        }
+
+        // Sons intermitentes (após o primeiro toque)
+        if (!modoNoturno) {
             switch (corAtual) {
-                case VERDE:
-                    // Verde: 1 beep curto por segundo
-                    if (tempoAtual - ultimoToque >= 4000) {
-                        tocar_frequencia(1200, 1000); // Tom mais agudo e curto
-                        ultimoToque = tempoAtual;
-                    }
-                    break;
-
                 case AMARELO:
-                    // Amarelo: beep rápido intermitente
-                    if (tempoAtual - ultimoToque >= 500) { // Alternância mais rápida
-                        if (!buzzerAtivo) {
-                            tocar_frequencia(1000, 250);
-                            buzzerAtivo = true;
-                        } else {
-                            buzzer_desliga(BUZZER_PIN);
-                            buzzerAtivo = false;
-                        }
+                    if (tempoAtual - ultimoToque >= 500) {
+                        tocar_frequencia(1000, 250);
                         ultimoToque = tempoAtual;
                     }
                     break;
-
                 case VERMELHO:
-                    // Vermelho: tom contínuo curto (500ms ligado e 1.5s desligado)
-                    if (tempoAtual - ultimoToque >= (buzzerAtivo ? 500 : 1500)) {
-                        if (!buzzerAtivo) {
-                            tocar_frequencia(800, 500);
-                            buzzerAtivo = true;
-                        } else {
-                            buzzer_desliga(BUZZER_PIN);
-                            buzzerAtivo = false;
-                        }
+                    if (tempoAtual - ultimoToque >= 2000) {
+                        tocar_frequencia(800, 500);
                         ultimoToque = tempoAtual;
                     }
                     break;
-
                 default:
                     break;
             }
         }
-        
-        // Delay curto para não sobrecarregar o processador
+
         vTaskDelay(pdMS_TO_TICKS(10));
-        
     }
 }
 
