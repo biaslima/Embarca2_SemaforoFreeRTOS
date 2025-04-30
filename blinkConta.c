@@ -31,7 +31,8 @@ enum corSemaforo{
     DESLIGADO
 };
 enum corSemaforo corAtual = VERDE; 
-static volatile uint32_t last_interrupt_time_A = 0;      
+static volatile uint32_t last_interrupt_time_A = 0; 
+volatile bool estadoMudou = false;     
 
 void vModoNormalTask()
 {
@@ -43,20 +44,27 @@ void vModoNormalTask()
     while (true){
 
         if (!modoNoturno){
+            corAtual = VERDE;
+            estadoMudou = true; 
             gpio_put(LED_PIN_RED, 0);
             gpio_put(LED_PIN_GREEN, 1);
-            corAtual = VERDE;
             vTaskDelay(pdMS_TO_TICKS(5000));
 
-            gpio_put(LED_PIN_GREEN, 1);
-            gpio_put(LED_PIN_RED, 1);
-            corAtual = AMARELO; 
-            vTaskDelay(pdMS_TO_TICKS(2000));
+            if (!modoNoturno) {
+                corAtual = AMARELO; 
+                estadoMudou = true; 
+                gpio_put(LED_PIN_GREEN, 1);
+                gpio_put(LED_PIN_RED, 1);
+                vTaskDelay(pdMS_TO_TICKS(2000));
+            }
 
-            gpio_put(LED_PIN_GREEN, 0);
-            gpio_put(LED_PIN_RED, 1);
-            corAtual = VERMELHO;
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            if (!modoNoturno) {
+                corAtual = VERMELHO;
+                estadoMudou = true; 
+                gpio_put(LED_PIN_GREEN, 0);
+                gpio_put(LED_PIN_RED, 1);
+                vTaskDelay(pdMS_TO_TICKS(5000));
+            }
 
         } else {
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -73,20 +81,23 @@ void vModoNoturnoTask()
 
     while (true){
         if (modoNoturno){
+            corAtual = AMARELO; 
+            estadoMudou = true; 
             gpio_put(LED_PIN_GREEN, 1);
             gpio_put(LED_PIN_RED, 1);
-            corAtual = AMARELO; 
             vTaskDelay(pdMS_TO_TICKS(1000));
 
-            gpio_put(LED_PIN_GREEN, 0);
-            gpio_put(LED_PIN_RED, 0);
-            corAtual = DESLIGADO; 
-            vTaskDelay(pdMS_TO_TICKS(1000));
-
+            // Verifica se ainda estamos no modo noturno
+            if (modoNoturno) {
+                corAtual = DESLIGADO;
+                estadoMudou = true; 
+                gpio_put(LED_PIN_GREEN, 0);
+                gpio_put(LED_PIN_RED, 0); 
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
         } else {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
-        
     }
 }
 
@@ -96,36 +107,66 @@ void vBuzzerTask()
     buzzer_init(BUZZER_PIN); 
     printf("Buzzer inicializado\n");
 
+    uint32_t ultimoToque = 0;
+    bool buzzerAtivo = false;
+
     while (true){
-        if (modoNoturno){
-            if (corAtual == AMARELO){
-                tocar_frequencia(1000, 200);
+        uint32_t tempoAtual = to_ms_since_boot(get_absolute_time());
+        
+        if (modoNoturno) {
+            //  beep lento a cada 2s
+            if (corAtual == AMARELO) {
+                if (tempoAtual - ultimoToque >= 2000) { // Beep a cada 2 segundos
+                    tocar_frequencia(1000, 300); // Tom de 300ms
+                    ultimoToque = tempoAtual;
+                }
             }
-            vTaskDelay(pdMS_TO_TICKS(1800));
+        }  else {
+            // Modo normal - depende da cor atual
+            switch (corAtual) {
+                case VERDE:
+                    // Verde: 1 beep curto por segundo
+                    if (tempoAtual - ultimoToque >= 4000) {
+                        tocar_frequencia(1200, 1000); // Tom mais agudo e curto
+                        ultimoToque = tempoAtual;
+                    }
+                    break;
 
-        } else {
-            switch (corAtual){
-            case VERDE:
-                tocar_frequencia(1000, 1000);
-                vTaskDelay(pdMS_TO_TICKS(4000));
-                break;
+                case AMARELO:
+                    // Amarelo: beep rápido intermitente
+                    if (tempoAtual - ultimoToque >= 500) { // Alternância mais rápida
+                        if (!buzzerAtivo) {
+                            tocar_frequencia(1000, 250);
+                            buzzerAtivo = true;
+                        } else {
+                            buzzer_desliga(BUZZER_PIN);
+                            buzzerAtivo = false;
+                        }
+                        ultimoToque = tempoAtual;
+                    }
+                    break;
 
-            case AMARELO:
-                tocar_frequencia(1200, 100);
-                vTaskDelay(pdMS_TO_TICKS(100));
-                
-            
-            case VERMELHO:
-                tocar_frequencia(800, 500);
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                
-                break;
-                
-            default:
-                vTaskDelay(pdMS_TO_TICKS(100));
-                break;
+                case VERMELHO:
+                    // Vermelho: tom contínuo curto (500ms ligado e 1.5s desligado)
+                    if (tempoAtual - ultimoToque >= (buzzerAtivo ? 500 : 1500)) {
+                        if (!buzzerAtivo) {
+                            tocar_frequencia(800, 500);
+                            buzzerAtivo = true;
+                        } else {
+                            buzzer_desliga(BUZZER_PIN);
+                            buzzerAtivo = false;
+                        }
+                        ultimoToque = tempoAtual;
+                    }
+                    break;
+
+                default:
+                    break;
             }
         }
+        
+        // Delay curto para não sobrecarregar o processador
+        vTaskDelay(pdMS_TO_TICKS(10));
         
     }
 }
@@ -237,25 +278,25 @@ void vDisplayTask()
 
         if (modoNoturno) {
             if (corAtual == AMARELO) {
-                sprintf(cor_str, "Estado: Alerta");
-                sprintf(instrucao_str, "Atencao ao cruzar!");
+                sprintf(cor_str, "Estado: AERTA");
+                sprintf(instrucao_str, "Atencao!");
             } else {
                 sprintf(cor_str, "Estado: -");
-                sprintf(instrucao_str, "Atencao ao cruzar!");
+                sprintf(instrucao_str, "Atencao!");
             }
         } else {
             switch (corAtual) {
                 case VERDE:
-                    sprintf(cor_str, "Estado: VERDE");
-                    sprintf(instrucao_str, "Seguro para pedestres");
+                    sprintf(cor_str, "Estado: LIVRE");
+                    sprintf(instrucao_str, "Seguro!");
                     break;
                 case AMARELO:
-                    sprintf(cor_str, "Estado: AMARELO");
-                    sprintf(instrucao_str, "Atencao! Vai fechar");
+                    sprintf(cor_str, "Estado: ALERTA");
+                    sprintf(instrucao_str, "Atencao!");
                     break;
                 case VERMELHO:
-                    sprintf(cor_str, "Estado: VERMELHO");
-                    sprintf(instrucao_str, "Pare! Aguarde");
+                    sprintf(cor_str, "Estado: PARADO");
+                    sprintf(instrucao_str, "Pare!");
                     break;
                 default:
                     sprintf(cor_str, "Estado: -");
@@ -269,7 +310,7 @@ void vDisplayTask()
         ssd1306_line(&ssd, 3, 20, 122, 20, true);
         ssd1306_line(&ssd, 3, 40, 122, 40, true);
         
-        ssd1306_draw_string(&ssd, "SEMAFORO INTELIGENTE", 8, 8);
+        ssd1306_draw_string(&ssd, "SEMAFORO", 16, 8);
         ssd1306_draw_string(&ssd, modo_str, 10, 25);
         ssd1306_draw_string(&ssd, cor_str, 10, 33);
         ssd1306_draw_string(&ssd, instrucao_str, 10, 48);
@@ -285,15 +326,24 @@ void vBotaoTask()
     gpio_set_dir(BUTTON_PIN_A, GPIO_IN);
     gpio_pull_up(BUTTON_PIN_A);
 
-    uint32_t current_time = to_us_since_boot(get_absolute_time());
+    bool botao_anterior = true; // Estado anterior do botão (HIGH por padrão devido ao pull-up)
 
     while (true){
-        if (gpio_get(BUTTON_PIN_A) == false && (current_time - last_interrupt_time_A > 200000)) {
+        uint32_t current_time = to_us_since_boot(get_absolute_time()); // Atualiza o tempo em cada iteração
+        
+        bool estado_atual = gpio_get(BUTTON_PIN_A);
+        
+        // Detecta borda de descida (botão pressionado) com debounce
+        if (estado_atual == false && botao_anterior == true && 
+            (current_time - last_interrupt_time_A > 200000)) { // 200ms de debounce
+            
             last_interrupt_time_A = current_time;
-            modoNoturno = !modoNoturno;
+            modoNoturno = !modoNoturno; // Inverte o modo
             printf("Modo alterado: %s\n", modoNoturno ? "Modo Noturno" : "Modo Normal");
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        
+        botao_anterior = estado_atual; // Atualiza o estado anterior
+        vTaskDelay(pdMS_TO_TICKS(10)); // Pequeno delay para não sobrecarregar o CPU
     }
 }
 

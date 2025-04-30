@@ -38,3 +38,8 @@ void tocar_frequencia(int frequencia, int duracao_ms) {
     
     pwm_set_enabled(slice_num, false);
 }
+
+void buzzer_desliga(int pin){
+    pwm_set_enabled(slice_num, false);
+    gpio_put(pin, 0);
+}
