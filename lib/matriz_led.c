@@ -8,12 +8,36 @@ int sm = 0;
 uint8_t coracao_cor = 0;
 
 // Padrões pra matriz
-const uint8_t padrao_coracao[5][5] = {
+const uint8_t padrao_alerta[5][5] = {
     {0, 0, 1, 0, 0},
     {0, 1, 1, 1, 0},
     {1, 1, 1, 1, 1},
     {1, 1, 1, 1, 1},
-    {0, 1, 0, 1, 0}
+    {0, 0, 0, 0, 0}
+};
+
+const uint8_t padrao_verde[5][5] = {
+    {0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 1},
+    {0, 0, 0, 1, 0},
+    {1, 0, 1, 0, 0},
+    {0, 1, 0, 0, 0}
+};
+
+const uint8_t padrao_amarelo[5][5] = {
+    {0, 0, 0, 1, 0},
+    {0, 0, 1, 0, 1},
+    {0, 1, 1, 1, 0},
+    {0, 0, 1, 0, 0},
+    {0, 1, 0, 0, 0}
+};
+
+const uint8_t padrao_vermelho[5][5] = {
+    {1, 0, 0, 0, 1},
+    {0, 1, 0, 1, 0},
+    {0, 0, 1, 0, 0},
+    {0, 1, 0, 1, 0},
+    {1, 0, 0, 0, 1}
 };
 
 void iniciar_matriz_leds(PIO pio_inst, uint sm_num, uint pin) {
@@ -63,8 +87,7 @@ void update_leds(PIO pio_inst, uint sm_num) {
         pio_sm_put_blocking(pio_inst, sm_num, leds[i] << 8u);
     }
 }
-
-void matriz_exibir_padrao(uint8_t padrao) {
+void exibir_padrao(uint8_t padrao) {
     printf("Chamando exibir padrão: %d\n", padrao);
     
     clear_matrix(pio, sm);

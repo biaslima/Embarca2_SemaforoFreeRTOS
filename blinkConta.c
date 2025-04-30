@@ -107,20 +107,18 @@ void vBuzzerTask()
             switch (corAtual){
             case VERDE:
                 tocar_frequencia(1000, 1000);
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskDelay(pdMS_TO_TICKS(4000));
                 break;
 
             case AMARELO:
-                while (true){
                 tocar_frequencia(1200, 100);
-                vTaskDelay(pdMS_TO_TICKS(200));
-                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+                
             
             case VERMELHO:
-            while (true){
                 tocar_frequencia(800, 500);
                 vTaskDelay(pdMS_TO_TICKS(1500));
-                }
+                
                 break;
                 
             default:
@@ -138,29 +136,74 @@ void vMatrizLEDTask()
     printf("Inicializando matriz de LEDs...\n");
     iniciar_matriz_leds(pio0, 0, led_matrix_pin);
     clear_matrix(pio0, 0);
+    update_leds(pio, sm);
 
     while (true){
         if (modoNoturno){
             if (corAtual == AMARELO) {
-                exibir_padrao(padrao_alerta);
+                // Limpa a matriz primeiro
+                clear_matrix(pio0, 0);
+                
+                // Para cada posição na matriz 5x5
+                for (int y = 0; y < 5; y++) {
+                    for (int x = 0; x < 5; x++) {
+                        if (padrao_alerta[y][x] == 1) {
+                            // Se o valor na posição for 1, acende o LED com a cor especificada
+                            uint8_t led_pos = matriz_posicao_xy(x, y);
+                            leds[led_pos] = create_color(30, 30, 0); // Amarelo (GRB)
+                        }
+                    }
+                }
+                update_leds(pio0, 0);
             } else {
-                limpar_matriz();
+                clear_matrix(pio0, 0);
+                update_leds(pio0, 0);
             }
         } else {
+            clear_matrix(pio0, 0);
+            
             switch (corAtual) {
                 case VERDE:
-                    exibir_padrao(padrao_verde);
+                    // Mostra padrão verde
+                    for (int y = 0; y < 5; y++) {
+                        for (int x = 0; x < 5; x++) {
+                            if (padrao_verde[y][x] == 1) {
+                                uint8_t led_pos = matriz_posicao_xy(x, y);
+                                leds[led_pos] = create_color(40, 0, 0); // Verde (GRB)
+                            }
+                        }
+                    }
                     break;
+                    
                 case AMARELO:
-                    exibir_padrao(padrao_amarelo);
+                    // Mostra padrão amarelo
+                    for (int y = 0; y < 5; y++) {
+                        for (int x = 0; x < 5; x++) {
+                            if (padrao_amarelo[y][x] == 1) {
+                                uint8_t led_pos = matriz_posicao_xy(x, y);
+                                leds[led_pos] = create_color(30, 30, 0); // Amarelo (GRB)
+                            }
+                        }
+                    }
                     break;
+                    
                 case VERMELHO:
-                    exibir_padrao(padrao_vermelho);
+                    // Mostra padrão vermelho
+                    for (int y = 0; y < 5; y++) {
+                        for (int x = 0; x < 5; x++) {
+                            if (padrao_vermelho[y][x] == 1) {
+                                uint8_t led_pos = matriz_posicao_xy(x, y);
+                                leds[led_pos] = create_color(0, 40, 0); // Vermelho (GRB)
+                            }
+                        }
+                    }
                     break;
+                    
                 default:
-                    limpar_matriz();
+                    // Nada a fazer, já limpamos a matriz
                     break;
             }
+            update_leds(pio0, 0);
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -280,7 +323,7 @@ int main()
         NULL, tskIDLE_PRIORITY, NULL);
     xTaskCreate(vBuzzerTask, "Task Buzzer", configMINIMAL_STACK_SIZE, 
         NULL, tskIDLE_PRIORITY + 2, NULL);
-    xTaskCreate(vMatrizLEDTask, "Task Matriz de LED", configMINIMAL_STACK_SIZE, 
+    xTaskCreate(vMatrizLEDTask, "Task Matriz de LED", configMINIMAL_STACK_SIZE * 2, // Aumentei o stack para garantir
         NULL, tskIDLE_PRIORITY, NULL);
     xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE, 
         NULL, tskIDLE_PRIORITY, NULL);
