@@ -3,6 +3,8 @@
 #include "hardware/i2c.h"
 #include "lib/ssd1306.h"
 #include "lib/font.h"
+#include "lib/matriz_led.h"
+#include "lib/buzzer.h"
 #include "FreeRTOS.h"
 #include "FreeRTOSConfig.h"
 #include "task.h"
@@ -13,36 +15,158 @@
 #define I2C_SCL 15
 #define endereco 0x3C
 
-#define led1 11
-#define led2 12
+#define LED_PIN_RED 13
+#define LED_PIN_GREEN 11
 
-void vBlinkLed1Task()
+#define BUZZER_PIN 21
+
+#define BUTTON_PIN_A 5
+
+//Variáveis globais
+bool modoNoturno = false;
+enum corSemaforo{
+    VERDE,
+    VERMELHO, 
+    AMARELO,
+    DESLIGADO
+};
+enum corSemaforo corAtual = VERDE; 
+static volatile uint32_t last_interrupt_time_A = 0;      
+
+void vModoNormalTask()
 {
-    gpio_init(led1);
-    gpio_set_dir(led1, GPIO_OUT);
-    while (true)
-    {
-        gpio_put(led1, true);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        gpio_put(led1, false);
-        vTaskDelay(pdMS_TO_TICKS(1223));
+    gpio_init(LED_PIN_RED);
+    gpio_set_dir(LED_PIN_RED, GPIO_OUT);
+    gpio_init(LED_PIN_GREEN);
+    gpio_set_dir(LED_PIN_GREEN, GPIO_OUT);
+
+    while (true){
+
+        if (!modoNoturno){
+            gpio_put(LED_PIN_RED, 0);
+            gpio_put(LED_PIN_GREEN, 1);
+            corAtual = VERDE;
+            vTaskDelay(pdMS_TO_TICKS(5000));
+
+            gpio_put(LED_PIN_GREEN, 1);
+            gpio_put(LED_PIN_RED, 1);
+            corAtual = AMARELO; 
+            vTaskDelay(pdMS_TO_TICKS(2000));
+
+            gpio_put(LED_PIN_GREEN, 0);
+            gpio_put(LED_PIN_RED, 1);
+            corAtual = VERMELHO;
+            vTaskDelay(pdMS_TO_TICKS(5000));
+
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
     }
 }
 
-void vBlinkLed2Task()
+void vModoNoturnoTask()
 {
-    gpio_init(led2);
-    gpio_set_dir(led2, GPIO_OUT);
-    while (true)
-    {
-        gpio_put(led2, true);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        gpio_put(led2, false);
-        vTaskDelay(pdMS_TO_TICKS(2224));
+    gpio_init(LED_PIN_RED);
+    gpio_set_dir(LED_PIN_RED, GPIO_OUT);
+    gpio_init(LED_PIN_GREEN);
+    gpio_set_dir(LED_PIN_GREEN, GPIO_OUT);
+
+    while (true){
+        if (modoNoturno){
+            gpio_put(LED_PIN_GREEN, 1);
+            gpio_put(LED_PIN_RED, 1);
+            corAtual = AMARELO; 
+            vTaskDelay(pdMS_TO_TICKS(1000));
+
+            gpio_put(LED_PIN_GREEN, 0);
+            gpio_put(LED_PIN_RED, 0);
+            corAtual = DESLIGADO; 
+            vTaskDelay(pdMS_TO_TICKS(1000));
+
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        
     }
 }
 
-void vDisplay3Task()
+void vBuzzerTask()
+{
+    // Inicializa o buzzer
+    buzzer_init(BUZZER_PIN); 
+    printf("Buzzer inicializado\n");
+
+    while (true){
+        if (modoNoturno){
+            if (corAtual == AMARELO){
+                tocar_frequencia(1000, 200);
+            }
+            vTaskDelay(pdMS_TO_TICKS(1800));
+
+        } else {
+            switch (corAtual){
+            case VERDE:
+                tocar_frequencia(1000, 1000);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                break;
+
+            case AMARELO:
+                while (true){
+                tocar_frequencia(1200, 100);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                }
+            
+            case VERMELHO:
+            while (true){
+                tocar_frequencia(800, 500);
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                }
+                break;
+                
+            default:
+                vTaskDelay(pdMS_TO_TICKS(100));
+                break;
+            }
+        }
+        
+    }
+}
+
+void vMatrizLEDTask()
+{
+    // Iniciar matriz de LEDs
+    printf("Inicializando matriz de LEDs...\n");
+    iniciar_matriz_leds(pio0, 0, led_matrix_pin);
+    clear_matrix(pio0, 0);
+
+    while (true){
+        if (modoNoturno){
+            if (corAtual == AMARELO) {
+                exibir_padrao(padrao_alerta);
+            } else {
+                limpar_matriz();
+            }
+        } else {
+            switch (corAtual) {
+                case VERDE:
+                    exibir_padrao(padrao_verde);
+                    break;
+                case AMARELO:
+                    exibir_padrao(padrao_amarelo);
+                    break;
+                case VERMELHO:
+                    exibir_padrao(padrao_vermelho);
+                    break;
+                default:
+                    limpar_matriz();
+                    break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void vDisplayTask()
 {
     // I2C Initialisation. Using it at 400Khz.
     i2c_init(I2C_PORT, 400 * 1000);
@@ -51,32 +175,82 @@ void vDisplay3Task()
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
     gpio_pull_up(I2C_SDA);                                        // Pull up the data line
     gpio_pull_up(I2C_SCL);                                        // Pull up the clock line
+
     ssd1306_t ssd;                                                // Inicializa a estrutura do display
     ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); // Inicializa o display
     ssd1306_config(&ssd);                                         // Configura o display
     ssd1306_send_data(&ssd);                                      // Envia os dados para o display
-    // Limpa o display. O display inicia com todos os pixels apagados.
     ssd1306_fill(&ssd, false);
     ssd1306_send_data(&ssd);
 
-    char str_y[5]; // Buffer para armazenar a string
-    int contador = 0;
-    bool cor = true;
+    char modo_str[20];
+    char cor_str[20];
+    char instrucao_str[25];
+
     while (true)
     {
-        sprintf(str_y, "%d", contador); // Converte em string
-        contador++;                     // Incrementa o contador
-        ssd1306_fill(&ssd, !cor);                          // Limpa o display
-        ssd1306_rect(&ssd, 3, 3, 122, 60, cor, !cor);      // Desenha um retângulo
-        ssd1306_line(&ssd, 3, 25, 123, 25, cor);           // Desenha uma linha
-        ssd1306_line(&ssd, 3, 37, 123, 37, cor);           // Desenha uma linha
-        ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 6); // Desenha uma string
-        ssd1306_draw_string(&ssd, "EMBARCATECH", 20, 16);  // Desenha uma string
-        ssd1306_draw_string(&ssd, "  FreeRTOS", 10, 28); // Desenha uma string
-        ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);    // Desenha uma string
-        ssd1306_draw_string(&ssd, str_y, 40, 52);          // Desenha uma string
-        ssd1306_send_data(&ssd);                           // Atualiza o display
-        sleep_ms(735);
+
+        sprintf(modo_str, "Modo: %s", modoNoturno ? "Noturno" : "Normal");
+
+        if (modoNoturno) {
+            if (corAtual == AMARELO) {
+                sprintf(cor_str, "Estado: Alerta");
+                sprintf(instrucao_str, "Atencao ao cruzar!");
+            } else {
+                sprintf(cor_str, "Estado: -");
+                sprintf(instrucao_str, "Atencao ao cruzar!");
+            }
+        } else {
+            switch (corAtual) {
+                case VERDE:
+                    sprintf(cor_str, "Estado: VERDE");
+                    sprintf(instrucao_str, "Seguro para pedestres");
+                    break;
+                case AMARELO:
+                    sprintf(cor_str, "Estado: AMARELO");
+                    sprintf(instrucao_str, "Atencao! Vai fechar");
+                    break;
+                case VERMELHO:
+                    sprintf(cor_str, "Estado: VERMELHO");
+                    sprintf(instrucao_str, "Pare! Aguarde");
+                    break;
+                default:
+                    sprintf(cor_str, "Estado: -");
+                    sprintf(instrucao_str, "-");
+                    break;
+            }
+        }
+
+        ssd1306_fill(&ssd, false);
+        ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);
+        ssd1306_line(&ssd, 3, 20, 122, 20, true);
+        ssd1306_line(&ssd, 3, 40, 122, 40, true);
+        
+        ssd1306_draw_string(&ssd, "SEMAFORO INTELIGENTE", 8, 8);
+        ssd1306_draw_string(&ssd, modo_str, 10, 25);
+        ssd1306_draw_string(&ssd, cor_str, 10, 33);
+        ssd1306_draw_string(&ssd, instrucao_str, 10, 48);
+        
+        ssd1306_send_data(&ssd);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void vBotaoTask()
+{
+    gpio_init(BUTTON_PIN_A);
+    gpio_set_dir(BUTTON_PIN_A, GPIO_IN);
+    gpio_pull_up(BUTTON_PIN_A);
+
+    uint32_t current_time = to_us_since_boot(get_absolute_time());
+
+    while (true){
+        if (gpio_get(BUTTON_PIN_A) == false && (current_time - last_interrupt_time_A > 200000)) {
+            last_interrupt_time_A = current_time;
+            modoNoturno = !modoNoturno;
+            printf("Modo alterado: %s\n", modoNoturno ? "Modo Noturno" : "Modo Normal");
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -98,13 +272,20 @@ int main()
     // Fim do trecho para modo BOOTSEL com botão B
 
     stdio_init_all();
+    printf("Iniciando Semaforo Inteligente com Modo Noturno\n");
 
-    xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE,
+    xTaskCreate(vModoNormalTask, "Semáforo Modo Normal", configMINIMAL_STACK_SIZE,
          NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE, 
+    xTaskCreate(vModoNoturnoTask, "Semaforo Modo Noturno", configMINIMAL_STACK_SIZE, 
         NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE, 
+    xTaskCreate(vBuzzerTask, "Task Buzzer", configMINIMAL_STACK_SIZE, 
+        NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(vMatrizLEDTask, "Task Matriz de LED", configMINIMAL_STACK_SIZE, 
         NULL, tskIDLE_PRIORITY, NULL);
+    xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE, 
+        NULL, tskIDLE_PRIORITY, NULL);
+    xTaskCreate(vBotaoTask, "Task Botao", configMINIMAL_STACK_SIZE, 
+        NULL, tskIDLE_PRIORITY + 2, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
