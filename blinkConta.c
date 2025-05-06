@@ -10,16 +10,16 @@
 #include "task.h"
 #include <stdio.h>
 
+//Variáveis do display
 #define I2C_PORT i2c1
 #define I2C_SDA 14
 #define I2C_SCL 15
 #define endereco 0x3C
 
+//Pinos GPIO
 #define LED_PIN_RED 13
 #define LED_PIN_GREEN 11
-
 #define BUZZER_PIN 21
-
 #define BUTTON_PIN_A 5
 
 //Variáveis globais
@@ -34,6 +34,8 @@ enum corSemaforo corAtual = VERDE;
 static volatile uint32_t last_interrupt_time_A = 0; 
 volatile bool estadoMudou = false;     
 
+
+//Tarefa que implementao modo normal do semáforo
 void vModoNormalTask()
 {
     gpio_init(LED_PIN_RED);
@@ -43,7 +45,7 @@ void vModoNormalTask()
 
     while (true){
 
-        if (!modoNoturno){
+        if (!modoNoturno){ //Verificaçãp da varíavel global de modo noturno (presente em todas as tarefas)
             corAtual = VERDE;
             estadoMudou = true; 
             gpio_put(LED_PIN_RED, 0);
@@ -72,6 +74,7 @@ void vModoNormalTask()
     }
 }
 
+//Tarefa que plementa o modo nortuno
 void vModoNoturnoTask()
 {
     gpio_init(LED_PIN_RED);
@@ -87,8 +90,7 @@ void vModoNoturnoTask()
             gpio_put(LED_PIN_RED, 1);
             vTaskDelay(pdMS_TO_TICKS(1000));
 
-            // Verifica se ainda estamos no modo noturno
-            if (modoNoturno) {
+            if (modoNoturno) { //Veificação dupla do modo noturno para evitar conflitos de tarefa. 
                 corAtual = DESLIGADO;
                 estadoMudou = true; 
                 gpio_put(LED_PIN_GREEN, 0);
@@ -101,6 +103,7 @@ void vModoNoturnoTask()
     }
 }
 
+//Tarefa para imentar o buzzer
 void vBuzzerTask()
 {
     buzzer_init(BUZZER_PIN); 
@@ -112,23 +115,23 @@ void vBuzzerTask()
     while (true){
         uint32_t tempoAtual = to_ms_since_boot(get_absolute_time());
 
-        // Se a cor mudou, toca imediatamente
+        // Se a cor mudou, toca imediatamente - Esse primeiro toque acontece imediatamente após a mudança de cor, sons intermitentes são feitos depos para evitar delays.
         if (corAtual != ultimaCor) {
             ultimaCor = corAtual;
             ultimoToque = tempoAtual;
 
-            if (modoNoturno) {
+            if (modoNoturno) { // Buzzer para modo noturno
                 if (corAtual == AMARELO) {
-                    tocar_frequencia(1000, 300); // Som imediato no modo noturno
+                    tocar_frequencia(1000, 300); 
                 }
             } else {
-                switch (corAtual) {
+                switch (corAtual) { //Switch para modo normal
                     case VERDE:
                         tocar_frequencia(1200, 1000); 
                         ultimoToque = tempoAtual + 99999; 
                         break;
                     case AMARELO:
-                        tocar_frequencia(1000, 250); // Primeiro bipe
+                        tocar_frequencia(1000, 250);
                         break;
                     case VERMELHO:
                         tocar_frequencia(800, 500); 
@@ -139,7 +142,7 @@ void vBuzzerTask()
             }
         }
 
-        // Sons intermitentes (após o primeiro toque)
+        // Sons intermitentes
         if (!modoNoturno) {
             switch (corAtual) {
                 case AMARELO:
@@ -163,6 +166,7 @@ void vBuzzerTask()
     }
 }
 
+//Tarefa que implementa matriz LEDs
 void vMatrizLEDTask()
 {
     // Iniciar matriz de LEDs
@@ -172,56 +176,67 @@ void vMatrizLEDTask()
     update_leds(pio, sm);
 
     while (true){
-        if (modoNoturno){
+        if (modoNoturno){ //Matriz para modo noturno
             if (corAtual == AMARELO) {
-                // Limpa a matriz primeiro
                 clear_matrix(pio0, 0);
-                
-                // Para cada posição na matriz 5x5
+        
                 for (int y = 0; y < 5; y++) {
                     for (int x = 0; x < 5; x++) {
                         if (padrao_alerta[y][x] == 1) {
-                            // Se o valor na posição for 1, acende o LED com a cor especificada
                             uint8_t led_pos = matriz_posicao_xy(x, y);
-                            leds[led_pos] = create_color(30, 30, 0); // Amarelo (GRB)
+                
+                            // Exclamação: 
+                            //Haste em uma cor
+                            if (x == 2 && (y == 0 || y == 1 || y == 2)) {
+                                leds[led_pos] = create_color(10, 40, 0); 
+                            } 
+                            // Ponto inferior da exclamação destacado em outra cor
+                            else if (x == 2 && y == 4) {
+                                leds[led_pos] = create_color(10, 40, 0); 
+                            }
+                            // Resto do fundo da exclamação
+                            else {
+                                leds[led_pos] = create_color(30, 30, 0); 
+                            }
                         }
                     }
                 }
+            
                 update_leds(pio0, 0);
             } else {
                 clear_matrix(pio0, 0);
                 update_leds(pio0, 0);
             }
-        } else {
+        } else {  // Matriz para modo normal
             clear_matrix(pio0, 0);
             
             switch (corAtual) {
                 case VERDE:
-                    // Mostra padrão verde
+                    // Simbolo de aprovado
                     for (int y = 0; y < 5; y++) {
                         for (int x = 0; x < 5; x++) {
                             if (padrao_verde[y][x] == 1) {
                                 uint8_t led_pos = matriz_posicao_xy(x, y);
-                                leds[led_pos] = create_color(40, 0, 0); // Verde (GRB)
+                                leds[led_pos] = create_color(40, 0, 0);
                             }
                         }
                     }
                     break;
                     
                 case AMARELO:
-                    // Mostra padrão amarelo
+                    // Simbolo de alerta
                     for (int y = 0; y < 5; y++) {
                         for (int x = 0; x < 5; x++) {
                             if (padrao_amarelo[y][x] == 1) {
                                 uint8_t led_pos = matriz_posicao_xy(x, y);
-                                leds[led_pos] = create_color(30, 30, 0); // Amarelo (GRB)
+                                leds[led_pos] = create_color(30, 30, 0); 
                             }
                         }
                     }
                     break;
                     
                 case VERMELHO:
-                    // Mostra padrão vermelho
+                    // Simbolo reprovado(X)
                     for (int y = 0; y < 5; y++) {
                         for (int x = 0; x < 5; x++) {
                             if (padrao_vermelho[y][x] == 1) {
@@ -233,7 +248,6 @@ void vMatrizLEDTask()
                     break;
                     
                 default:
-                    // Nada a fazer, já limpamos a matriz
                     break;
             }
             update_leds(pio0, 0);
@@ -242,23 +256,25 @@ void vMatrizLEDTask()
     }
 }
 
+//Tarefa que atualiza o display
 void vDisplayTask()
 {
-    // I2C Initialisation. Using it at 400Khz.
+    //Inicializa o display
     i2c_init(I2C_PORT, 400 * 1000);
 
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
-    gpio_pull_up(I2C_SDA);                                        // Pull up the data line
-    gpio_pull_up(I2C_SCL);                                        // Pull up the clock line
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);                    
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);                    
+    gpio_pull_up(I2C_SDA);                                        
+    gpio_pull_up(I2C_SCL);                                        
 
-    ssd1306_t ssd;                                                // Inicializa a estrutura do display
-    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); // Inicializa o display
-    ssd1306_config(&ssd);                                         // Configura o display
-    ssd1306_send_data(&ssd);                                      // Envia os dados para o display
+    ssd1306_t ssd;                                                
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); 
+    ssd1306_config(&ssd);                                         
+    ssd1306_send_data(&ssd);                                      
     ssd1306_fill(&ssd, false);
     ssd1306_send_data(&ssd);
 
+    //Variáveis para display
     char modo_str[20];
     char cor_str[20];
     char instrucao_str[25];
@@ -270,7 +286,7 @@ void vDisplayTask()
 
         if (modoNoturno) {
             if (corAtual == AMARELO) {
-                sprintf(cor_str, "Estado: AERTA");
+                sprintf(cor_str, "Estado: ALERTA");
                 sprintf(instrucao_str, "Atencao!");
             } else {
                 sprintf(cor_str, "Estado: -");
@@ -312,30 +328,30 @@ void vDisplayTask()
     }
 }
 
+//Tarefa que implemnta botão para alternar modos
 void vBotaoTask()
 {
     gpio_init(BUTTON_PIN_A);
     gpio_set_dir(BUTTON_PIN_A, GPIO_IN);
     gpio_pull_up(BUTTON_PIN_A);
 
-    bool botao_anterior = true; // Estado anterior do botão (HIGH por padrão devido ao pull-up)
+    bool botao_anterior = true; 
 
     while (true){
-        uint32_t current_time = to_us_since_boot(get_absolute_time()); // Atualiza o tempo em cada iteração
+        uint32_t current_time = to_us_since_boot(get_absolute_time()); 
         
         bool estado_atual = gpio_get(BUTTON_PIN_A);
         
-        // Detecta borda de descida (botão pressionado) com debounce
         if (estado_atual == false && botao_anterior == true && 
             (current_time - last_interrupt_time_A > 200000)) { // 200ms de debounce
             
             last_interrupt_time_A = current_time;
-            modoNoturno = !modoNoturno; // Inverte o modo
+            modoNoturno = !modoNoturno; 
             printf("Modo alterado: %s\n", modoNoturno ? "Modo Noturno" : "Modo Normal");
         }
         
-        botao_anterior = estado_atual; // Atualiza o estado anterior
-        vTaskDelay(pdMS_TO_TICKS(10)); // Pequeno delay para não sobrecarregar o CPU
+        botao_anterior = estado_atual; 
+        vTaskDelay(pdMS_TO_TICKS(10)); 
     }
 }
 

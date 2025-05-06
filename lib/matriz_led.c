@@ -9,11 +9,11 @@ uint8_t coracao_cor = 0;
 
 // Padrões pra matriz
 const uint8_t padrao_alerta[5][5] = {
-    {0, 0, 1, 0, 0},
     {0, 1, 1, 1, 0},
     {1, 1, 1, 1, 1},
     {1, 1, 1, 1, 1},
-    {0, 0, 0, 0, 0}
+    {1, 1, 1, 1, 1},
+    {0, 1, 1, 1, 0}
 };
 
 const uint8_t padrao_verde[5][5] = {
@@ -31,13 +31,6 @@ const uint8_t padrao_amarelo[5][5] = {
     {0, 0, 1, 0, 0},
     {0, 0, 1, 0, 0}
 };
-/*const uint8_t padrao_amarelo[5][5] = {
-    {0, 0, 0, 1, 0},
-    {0, 0, 1, 0, 0},
-    {0, 1, 1, 1, 0},
-    {0, 0, 1, 0, 0},
-    {0, 1, 0, 0, 0}
-};*/
 
 const uint8_t padrao_vermelho[5][5] = {
     {1, 0, 0, 0, 1},
