@@ -176,37 +176,32 @@ void vMatrizLEDTask()
     update_leds(pio, sm);
 
     while (true){
-        if (modoNoturno){ //Matriz para modo noturno
+        if (modoNoturno){ // Matriz para modo noturno
             if (corAtual == AMARELO) {
                 clear_matrix(pio0, 0);
-        
+                
                 for (int y = 0; y < 5; y++) {
                     for (int x = 0; x < 5; x++) {
                         if (padrao_alerta[y][x] == 1) {
                             uint8_t led_pos = matriz_posicao_xy(x, y);
-                
-                            // Exclamação: 
-                            //Haste em uma cor
-                            if (x == 2 && (y == 0 || y == 1 || y == 2)) {
-                                leds[led_pos] = create_color(10, 40, 0); 
+                        
+                            if (x == 2 && y == 0) {
+                                leds[led_pos] = create_color(10, 60, 0); 
                             } 
-                            // Ponto inferior da exclamação destacado em outra cor
-                            else if (x == 2 && y == 4) {
-                                leds[led_pos] = create_color(10, 40, 0); 
+                            else if (x == 2 && (y == 2 || y == 3 || y == 4)) {
+                                leds[led_pos] = create_color(10, 60, 0); 
                             }
-                            // Resto do fundo da exclamação
                             else {
                                 leds[led_pos] = create_color(30, 30, 0); 
                             }
                         }
                     }
                 }
-            
                 update_leds(pio0, 0);
             } else {
                 clear_matrix(pio0, 0);
                 update_leds(pio0, 0);
-            }
+            }  // <-- FECHAMENTO DO if (modoNoturno)
         } else {  // Matriz para modo normal
             clear_matrix(pio0, 0);
             
